@@ -1,0 +1,33 @@
+# ============================================================
+# Experiment 1 – Baseline  (MSELoss, 10k images, 20 epochs)
+# ============================================================
+experiment:
+  name: experiment_1
+  output_dir: outputs/experiment_1
+
+data:
+  raw_dir: data/raw
+  image_dir: data/images
+  labels_csv: data/labels.csv
+  sample_size: 10000
+  train_split: 0.80
+  val_split: 0.10
+  test_split: 0.10
+  random_seed: 42
+
+model:
+  dropout: 0.3
+
+training:
+  epochs: 20
+  batch_size: 32
+  lr: 0.001
+  weight_decay: 1.0e-4
+  scheduler: StepLR # StepLR | CosineAnnealingLR
+  step_size: 5
+  gamma: 0.5
+  early_stop_patience: null # null = disabled
+  num_workers: 0
+
+loss:
+  type: MSELoss # MSELoss
