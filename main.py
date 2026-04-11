@@ -6,7 +6,7 @@ Usage
   python main.py --download-only                    # download + extract
   python main.py --explore-only                     # exploration plots only
   python main.py --config config/config_exp1.yaml   # one experiment
-  python main.py --all                              # all 3 experiments + compare
+  python main.py --all                              # all 4 experiments + compare
 """
 
 import argparse
