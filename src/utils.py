@@ -3,6 +3,7 @@ import os
 import random
 import numpy as np
 import torch
+import scipy
 
 
 def reduce_phi1(phi1, step: float = 60.0) -> np.ndarray:
@@ -104,3 +105,33 @@ def make_dirs(cfg: dict):
     for d in [cfg["data"]["raw_dir"], cfg["data"]["image_dir"],
               "outputs/exploration", "outputs/comparison"]:
         os.makedirs(d, exist_ok=True)
+
+# ── Experiment 4: Quaternion encoding ──────────────────────────────────────
+
+
+def euler_to_quat(angles_deg: np.ndarray) -> np.ndarray:
+    """
+    Bunge Euler angles (N,3) [phi1, Phi, phi2] in degrees
+    → unit quaternions (N,4) as [w, x, y, z].
+    Canonical form: w >= 0  (resolves double-cover ambiguity).
+    """
+    from scipy.spatial.transform import Rotation
+    angles_deg = np.asarray(angles_deg, dtype=np.float32)
+    q_xyzw = Rotation.from_euler('ZXZ', angles_deg, degrees=True).as_quat()
+    q_wxyz = np.roll(q_xyzw, shift=1, axis=-1).astype(np.float32)
+    q_wxyz[q_wxyz[:, 0] < 0] *= -1
+    return q_wxyz
+
+
+def quat_to_euler(q: np.ndarray) -> np.ndarray:
+    """
+    Unit quaternions (N,4) [w, x, y, z]
+    """
+    from scipy.spatial.transform import Rotation
+    q = np.asarray(q, dtype=np.float32)
+    norms = np.linalg.norm(q, axis=1, keepdims=True)
+    q = q / np.where(norms > 1e-8, norms, 1.0)
+    q_xyzw = np.roll(q, shift=-1, axis=-1)
+    angles = Rotation.from_quat(q_xyzw).as_euler(
+        'ZXZ', degrees=True).astype(np.float32)
+    return angles % 360.0

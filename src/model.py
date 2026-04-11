@@ -19,10 +19,10 @@ class ConvBlock(nn.Module):
 
 class OrientationCNN(nn.Module):
     """
-    Input (B,1,256,256) -> Output (B,6) sin-cos for phi1, Phi, phi2.
+    Model architecture for predicting orientation from diffraction patterns.
     """
 
-    def __init__(self, dropout=0.3):
+    def __init__(self, dropout=0.3, output_dim=6):
         super().__init__()
         self.features = nn.Sequential(
             ConvBlock(1, 32), ConvBlock(32, 64), ConvBlock(
@@ -33,7 +33,7 @@ class OrientationCNN(nn.Module):
             nn.Flatten(),
             nn.Linear(256, 512), nn.ReLU(True), nn.Dropout(dropout),
             nn.Linear(512, 256), nn.ReLU(True), nn.Dropout(dropout),
-            nn.Linear(256, 6),
+            nn.Linear(256, output_dim),
         )
 
     def forward(self, x): return self.head(self.gap(self.features(x)))
@@ -44,7 +44,7 @@ def count_parameters(model): return sum(p.numel()
 
 
 def build_model(cfg: dict, device):
-    model = OrientationCNN(dropout=cfg["model"]["dropout"]).to(device)
-    print(
-        f"  OrientationCNN built — {count_parameters(model):,} trainable parameters")
+    output_dim = cfg.get('model', {}).get('output_dim', 6)
+    model = OrientationCNN(dropout=cfg['model']['dropout'], output_dim=output_dim).to(device)
+    print(f"OrientationCNN built: {count_parameters(model):,} trainable parameters  (output_dim={output_dim})")
     return model

@@ -1,10 +1,12 @@
-"""evaluate.py – test-set inference, metrics, save results.json + accuracy_table.csv."""
+"""
+evaluate.py – test-set inference, metrics, save results.json + accuracy_table.csv.
+"""
 import os
 import json
 import numpy as np
 import pandas as pd
 import torch
-from src.utils import decode_sincos, angular_error
+from src.utils import decode_sincos, angular_error, quat_to_euler
 
 
 def evaluate(model, test_loader, df_test, cfg, device) -> dict:
@@ -14,10 +16,17 @@ def evaluate(model, test_loader, df_test, cfg, device) -> dict:
         for imgs, labels in test_loader:
             preds_l.append(model(imgs.to(device)).cpu().numpy())
             labels_l.append(labels.numpy())
-    step = cfg["loss"].get("symmetry_step_deg", 360.0)
-    pred_a = decode_sincos(np.vstack(preds_l), step=step)
-    true_a = decode_sincos(np.vstack(labels_l), step=step)
-    per_mae, overall = angular_error(pred_a, true_a, step=step)
+    step = cfg['loss'].get('symmetry_step_deg', 360.0)
+    encoding = cfg.get('model', {}).get('encoding', 'sincos')
+    if encoding == 'quaternion':
+        pred_a = quat_to_euler(np.vstack(preds_l))
+        true_a = quat_to_euler(np.vstack(labels_l))
+        mae_step = 360.0
+    else:
+        pred_a = decode_sincos(np.vstack(preds_l),  step=step)
+        true_a = decode_sincos(np.vstack(labels_l), step=step)
+        mae_step = step
+    per_mae, overall = angular_error(pred_a, true_a, step=mae_step)
 
     results = {
         "experiment":        cfg["experiment"]["name"],

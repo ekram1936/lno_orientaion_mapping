@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from src.utils import decode_sincos, angular_error
+from src.utils import decode_sincos, angular_error, quat_to_euler
 
 
 def build_optimizer_and_scheduler(model, cfg):
@@ -38,7 +38,8 @@ def _train_epoch(model, loader, criterion, opt, device):
     model.train()
     total = 0.0
     for imgs, labels in loader:
-        imgs, labels = imgs.to(device), labels.to(device)
+        imgs = imgs.float().to(device)
+        labels = labels.float().to(device)
         opt.zero_grad()
         loss = criterion(model(imgs), labels)
         loss.backward()
@@ -48,7 +49,7 @@ def _train_epoch(model, loader, criterion, opt, device):
     return total / len(loader.dataset)
 
 
-def _validate(model, loader, criterion, device, step: float = 360.0):
+def _validate(model, loader, criterion, device, step: float = 360.0, encoding: str = 'sincos'):
     """
     Runs validation loop and computes both loss and angular MAE metrics.
     """
@@ -56,15 +57,23 @@ def _validate(model, loader, criterion, device, step: float = 360.0):
     total, preds_l, labels_l = 0.0, [], []
     with torch.no_grad():
         for imgs, labels in loader:
-            imgs, labels = imgs.to(device), labels.to(device)
+            imgs = imgs.float().to(device)
+            labels = labels.float().to(device)
             preds = model(imgs)
             total += criterion(preds, labels).item() * imgs.size(0)
             preds_l.append(preds.cpu().numpy())
             labels_l.append(labels.cpu().numpy())
 
-    all_preds = decode_sincos(np.vstack(preds_l), step=step)
-    all_labels = decode_sincos(np.vstack(labels_l), step=step)
-    per_angle, overall_mae = angular_error(all_preds, all_labels, step=step)
+    if encoding == 'quaternion':
+        all_preds = quat_to_euler(np.vstack(preds_l))
+        all_labels = quat_to_euler(np.vstack(labels_l))
+        mae_step = 360.0
+    else:
+        all_preds = decode_sincos(np.vstack(preds_l),  step=step)
+        all_labels = decode_sincos(np.vstack(labels_l), step=step)
+        mae_step = step
+
+    per_angle, overall_mae = angular_error(all_preds, all_labels, step=mae_step)
     return total / len(loader.dataset), overall_mae, per_angle
 
 
@@ -77,6 +86,7 @@ def run_training(model, train_loader, val_loader, criterion,
     patience = cfg["training"]["early_stop_patience"]
     out_dir = cfg["experiment"]["output_dir"]
     step = cfg["loss"].get("symmetry_step_deg", 360.0)
+    encoding = cfg.get('model', {}).get('encoding', 'sincos')
 
     best_weights_path = os.path.join(out_dir, "best_model.pth")
     ckpt_dir = os.path.join(out_dir, "checkpoints")
@@ -102,7 +112,7 @@ def run_training(model, train_loader, val_loader, criterion,
 
         tr = _train_epoch(model, train_loader, criterion, opt, device)
         vl, vm, per_angle_mae = _validate(
-            model, val_loader, criterion, device, step=step)
+            model, val_loader, criterion, device, step=step, encoding=encoding)
         scheduler.step()
         lr = opt.param_groups[0]["lr"]
 

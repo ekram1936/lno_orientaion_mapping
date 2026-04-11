@@ -1,7 +1,9 @@
 """
-Loss functions for training the orientation model."""
+Loss functions for training the orientation model.
+"""
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class SymmetryAwareLoss(nn.Module):
@@ -30,5 +32,20 @@ def build_loss(cfg: dict) -> nn.Module:
         print(f"  Loss: SymmetryAwareLoss (fold={fold} deg, "
               f"generates {int(360/fold)} equivalents)")
         return SymmetryAwareLoss(fold)
+    if t == "QuaternionLoss":
+        print(" Loss : QuaternionLoss  (MSE on unit quaternions)")
+        return QuaternionLoss()
     print("  Loss: MSELoss")
     return nn.MSELoss()
+
+
+class QuaternionLoss(nn.Module):
+    """
+    MSE loss on unit quaternions
+    """
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        pred_n = F.normalize(pred, p=2, dim=1)
+        dot = (pred_n * target).sum(dim=1, keepdim=True)
+        target = torch.where(dot < 0, -target, target)
+        return F.mse_loss(pred_n, target)

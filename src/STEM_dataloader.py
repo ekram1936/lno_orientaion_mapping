@@ -7,7 +7,7 @@ import pandas as pd
 from PIL import Image
 import torch
 from torch.utils.data import Dataset, DataLoader
-from src.utils import encode_sincos, set_seeds
+from src.utils import encode_sincos, euler_to_quat, set_seeds
 
 
 def subsample_and_split(cfg: dict):
@@ -52,14 +52,20 @@ class DiffractionDataset(Dataset):
     """
     LOG_MAX = np.log1p(255.0)
 
-    def __init__(self, dataframe: pd.DataFrame, image_dir: str, augment: bool = False, symmetry_step: float = 360.0):
+    def __init__(self, dataframe: pd.DataFrame, image_dir: str, augment: bool = False, symmetry_step: float = 360.0, encoding: str = 'sincos'):
         self.df = dataframe.reset_index(drop=True)
         self.image_dir = image_dir
         self.augment = augment
         self.symmetry_step = symmetry_step
+        self.encoding = encoding
         angles = self.df[["phi1", "Phi", "phi2"]].values.astype(np.float32)
-        self.labels = encode_sincos(
-            angles, step=symmetry_step).astype(np.float32)
+        if self.encoding == 'sincos':
+            self.labels = encode_sincos(
+                angles, step=symmetry_step).astype(np.float32)
+        elif self.encoding == 'quaternion':
+            self.labels = euler_to_quat(angles)
+        else:
+            raise ValueError(f"Unknown encoding: {self.encoding}")
 
     def __len__(self):
         return len(self.df)
@@ -82,10 +88,11 @@ def build_dataloaders(df_train, df_val, df_test, cfg: dict):
     batch_size = cfg["training"]["batch_size"]
     num_workers = cfg["training"]["num_workers"]
     step = cfg["loss"].get("symmetry_step_deg", 360.0)
-    train_loader = DataLoader(DiffractionDataset(df_train, image_dir, augment=True, symmetry_step=step),
+    encoding = cfg.get('model', {}).get('encoding', 'sincos')
+    train_loader = DataLoader(DiffractionDataset(df_train, image_dir, augment=True, symmetry_step=step, encoding=encoding),
                               batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(DiffractionDataset(df_val,   image_dir, augment=False, symmetry_step=step),
+    val_loader = DataLoader(DiffractionDataset(df_val,   image_dir, augment=False, symmetry_step=step, encoding=encoding),
                             batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    test_loader = DataLoader(DiffractionDataset(df_test,  image_dir, augment=False, symmetry_step=step),
+    test_loader = DataLoader(DiffractionDataset(df_test,  image_dir, augment=False, symmetry_step=step, encoding=encoding),
                              batch_size=batch_size, shuffle=False, num_workers=num_workers)
     return train_loader, val_loader, test_loader
